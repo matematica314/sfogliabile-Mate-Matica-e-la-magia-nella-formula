@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=yes">
+<meta name="theme-color" content="#181e2e">
+<title>Il mio sfogliabile</title>
+<style>
+:root{--ink:#e9e8e3;--muted:#abb2c2;--accent:#eacb91;--panel:#222a3a;--line:#454e5c}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;}body{background:radial-gradient(ellipse at 55% 37%,#444856 0%,#202638 50%,#141926 100%);color:var(--ink);font:15px/1.5 system-ui,-apple-system,'Segoe UI',sans-serif}
+.app{width:min(1320px,100%);min-height:100vh;min-height:100dvh;margin:auto;display:flex;flex-direction:column}
+.top{padding:18px 24px 5px;text-align:center}.top h1{font:400 clamp(24px,3vw,37px) Georgia,serif;margin:0}
+.stage{position:relative;flex:1;min-height:350px;display:flex;align-items:center;justify-content:center;margin:0 10px;overflow:hidden;touch-action:pan-y}
+.stage:before{content:"";position:absolute;width:min(94%,1000px);height:70px;bottom:6%;border-radius:50%;background:#0008;filter:blur(30px);pointer-events:none}
+#book-mount{position:relative;z-index:2;display:flex;align-items:center;justify-content:center;flex:none;filter:drop-shadow(6px 12px 17px #0008);transform-origin:center center;will-change:transform}
+.page{background:#fcfaf6;overflow:hidden}.page img{display:block;width:100%;height:100%;object-fit:contain;pointer-events:none}.page.hard{border:1px solid #d1c5ad}
+.bar{padding:9px 14px 14px;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}
+button{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:9px 12px;min-width:44px;cursor:pointer;font:inherit}button:hover{border-color:var(--accent)}button:disabled{opacity:.35;cursor:default}button:focus-visible{outline:3px solid #fff;outline-offset:2px}
+.count{min-width:125px;text-align:center;font-variant-numeric:tabular-nums}.zoom-label{min-width:46px;text-align:center;font-size:13px;color:var(--muted)}
+.status{font-size:12px;color:var(--muted);text-align:center;padding:0 12px 9px;min-height:26px}.status.error{color:#ffd0c3}
+.loading{position:absolute;z-index:8;inset:12% 8%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;border-radius:18px;background:#151b29f2;gap:10px}
+.loading[hidden]{display:none}.loading strong{font:400 23px Georgia,serif}.loading span{color:var(--muted);font-size:13px}
+#exit-fullscreen{display:none;position:fixed;z-index:10000;top:max(12px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));width:44px;height:44px;padding:0;border-radius:50%;border:1px solid #ffffff70;background:#111b;color:#fff;font:32px/1 system-ui;align-items:center;justify-content:center}
+.stage.zoomed{touch-action:none;cursor:grab}.stage.zoomed.dragging{cursor:grabbing}.stage.zoomed #book-mount{pointer-events:none}
+@media(max-width:700px){.top{padding:12px 10px 5px}.top h1{font-size:25px}.stage{min-height:280px;margin:0 3px}.bar{gap:5px;padding:7px 4px 12px}.bar button{padding:8px 10px;min-width:39px}.count{min-width:104px;font-size:13px}}
+html:fullscreen,html:fullscreen body{height:100%;min-height:0;overflow:hidden;background:#141926}
+html:fullscreen .app{width:100vw;max-width:none;height:100vh;height:100dvh;min-height:0;margin:0}
+html:fullscreen .top,html:fullscreen .bar,html:fullscreen .status{display:none!important}
+html:fullscreen .stage{width:100vw;height:100vh;height:100dvh;min-height:0;flex:none;margin:0;padding:0}
+html:fullscreen .stage:before{display:none}html:fullscreen #book-mount{filter:none}html:fullscreen #exit-fullscreen{display:flex}
+</style>
+</head>
+<body>
+<div class="app">
+<header class="top">
+<!-- PERSONALIZZA QUI IL TITOLO DEL LIBRO -->
+<h1 id="book-title">Il mio sfogliabile</h1>
+</header>
+<main class="stage" id="stage">
+  <div id="book-mount"><div id="flipbook"></div></div>
+  <div class="loading" id="loading" role="status"><strong>Prepariamo il libro…</strong><span id="progress-label">Apertura del documento</span></div>
+</main>
+<nav class="bar" aria-label="Navigazione del libro">
+<button id="first" title="Prima pagina" aria-label="Prima pagina">⇤</button>
+<button id="prev" title="Pagina precedente" aria-label="Pagina precedente">←</button>
+<span class="count" id="counter">Pagina —</span>
+<button id="next" title="Pagina successiva" aria-label="Pagina successiva">→</button>
+<button id="last" title="Ultima pagina" aria-label="Ultima pagina">⇥</button>
+<button id="zoom-out" title="Riduci" aria-label="Riduci ingrandimento">−</button>
+<span class="zoom-label" id="zoom-label">100%</span>
+<button id="zoom-in" title="Ingrandisci" aria-label="Ingrandisci">+</button>
+<button id="zoom-reset" title="Ripristina dimensioni" aria-label="Ripristina dimensioni">↺</button>
+<button id="fullscreen" title="Schermo intero" aria-label="Schermo intero">⛶</button>
+</nav>
+<div class="status" id="status" aria-live="polite"></div>
+</div>
+<button id="exit-fullscreen" aria-label="Esci da schermo intero" title="Esci da schermo intero">×</button>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/page-flip@2.0.7/dist/js/page-flip.browser.js"></script>
+<script>
+'use strict';
+// Sostituisci solo documento.pdf per pubblicare un altro libro.
+const PDF_FILE='documento.pdf';
+const $=id=>document.getElementById(id);
+document.title=$('book-title').textContent;
+const stage=$('stage'), mount=$('book-mount');
+let pdf=null,flip=null,nodes=[],current=0,pageRatio=1.414,resizing=null;
+let zoom=1,panX=0,panY=0;
+const MIN_ZOOM=1,MAX_ZOOM=4,MAX_CACHE=14;
+const cached=new Map(),active=new Set(),pending=new Set();
+let running=0;
+function status(msg,bad=false){$('status').textContent=msg;$('status').classList.toggle('error',bad)}
+function loading(on,msg=''){ $('loading').hidden=!on;if(msg)$('progress-label').textContent=msg; }
+function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+function updateButtons(){if(!flip)return;current=flip.getCurrentPageIndex();$('counter').textContent=`Pagina ${Math.min(current+1,nodes.length)} di ${nodes.length}`;
+ $('first').disabled=$('prev').disabled=current===0;$('last').disabled=$('next').disabled=current>=nodes.length-1;}
+function neededPages(){const ids=[];for(let delta=0;delta<=4;delta++){for(const index of delta===0?[current]:[current+delta,current-delta])if(index>=0&&index<nodes.length&&!ids.includes(index))ids.push(index)}return ids;}
+function queueNearby(){if(!pdf)return;for(const i of neededPages())if(!cached.has(i))pending.add(i);pump();}
+function trimCache(){if(cached.size<=MAX_CACHE)return;const protectedSet=new Set(neededPages());
+ for(const i of [...cached.keys()]){if(cached.size<=MAX_CACHE)break;if(protectedSet.has(i))continue;const url=cached.get(i);cached.delete(i);URL.revokeObjectURL(url);if(nodes[i])nodes[i].querySelector('img').removeAttribute('src');}}
+function pump(){if(!pdf)return;while(running<2&&pending.size){const order=neededPages();const targets=[...pending].sort((a,b)=>{const ai=order.indexOf(a),bi=order.indexOf(b);return (ai<0?100+Math.abs(a-current):ai)-(bi<0?100+Math.abs(b-current):bi)});
+const i=targets[0];pending.delete(i);if(cached.has(i)||active.has(i))continue;running++;active.add(i);
+renderPage(i).then(url=>{cached.set(i,url);const img=nodes[i]?.querySelector('img');if(img)img.src=url;trimCache();}).catch(err=>{console.warn('Pagina '+(i+1),err);}).finally(()=>{active.delete(i);running--;pump()});}}
+async function renderPage(i){const page=await pdf.getPage(i+1);const base=page.getViewport({scale:1});
+ // Risoluzione equilibrata fra nitidezza e memoria; lo zoom ingrandisce le immagini già preparate.
+ const targetWidth=Math.min(1600,Math.max(950,Math.ceil(base.width*1.65)));
+ const viewport=page.getViewport({scale:targetWidth/base.width});const canvas=document.createElement('canvas');canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+ try{await page.render({canvasContext:canvas.getContext('2d',{alpha:false}),viewport}).promise;
+ const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error('Conversione immagine non riuscita')),'image/jpeg',.86));return URL.createObjectURL(blob);
+ }finally{canvas.width=0;canvas.height=0;page.cleanup();}}
+function makeNodes(){nodes=Array.from({length:pdf.numPages},(_,i)=>{const div=document.createElement('div');div.className='page'+((i===0||i===pdf.numPages-1)?' hard':'');if(i===0||i===pdf.numPages-1)div.dataset.density='hard';const img=document.createElement('img');img.alt=`Pagina ${i+1}`;img.draggable=false;if(cached.has(i))img.src=cached.get(i);div.appendChild(img);return div;});}
+function mountBook(index=0){if(!window.St?.PageFlip)return;if(flip){try{flip.destroy()}catch(e){console.warn(e)}flip=null;}
+mount.innerHTML='<div id="flipbook"></div>';makeNodes();const full=!!document.fullscreenElement;
+const spare=full?0:document.querySelector('.top').offsetHeight+document.querySelector('.bar').offsetHeight+45;
+const aw=Math.max(150,stage.clientWidth-10),ah=Math.max(120,window.innerHeight-spare);
+const single=aw<700;const h=Math.max(100,Math.floor(Math.min(ah,aw*pageRatio/(single?1:2))));const w=Math.max(70,Math.floor(h/pageRatio));
+mount.style.width=(single?w:2*w)+'px';mount.style.height=h+'px';
+flip=new St.PageFlip($('flipbook'),{width:w,height:h,size:'fixed',minWidth:w,maxWidth:w,minHeight:h,maxHeight:h,usePortrait:true,autoSize:true,drawShadow:true,mobileScrollSupport:true,showCover:true,flippingTime:1050,maxShadowOpacity:.53,startPage:clamp(index,0,nodes.length-1)});
+flip.loadFromHTML(nodes);flip.on('flip',()=>{updateButtons();queueNearby()});flip.on('init',updateButtons);flip.on('changeOrientation',updateButtons);
+updateButtons();applyZoom();queueNearby();}
+function boundPan(){const maxX=Math.max(0,(mount.offsetWidth*zoom-stage.clientWidth)/2+35);const maxY=Math.max(0,(mount.offsetHeight*zoom-stage.clientHeight)/2+35);panX=clamp(panX,-maxX,maxX);panY=clamp(panY,-maxY,maxY)}
+function applyZoom(){boundPan();mount.style.transform=`translate(${panX}px,${panY}px) scale(${zoom})`;stage.classList.toggle('zoomed',zoom>1.005);$('zoom-label').textContent=Math.round(zoom*100)+'%';$('zoom-out').disabled=zoom<=MIN_ZOOM;$('zoom-in').disabled=zoom>=MAX_ZOOM;}
+function setZoom(next){zoom=clamp(next,MIN_ZOOM,MAX_ZOOM);if(zoom===1){panX=0;panY=0}applyZoom()}
+$('zoom-out').onclick=()=>setZoom(zoom-.25);$('zoom-in').onclick=()=>setZoom(zoom+.25);$('zoom-reset').onclick=()=>setZoom(1);
+$('first').onclick=()=>{setZoom(1);flip?.flip(0,'bottom')};$('prev').onclick=()=>{setZoom(1);flip?.flipPrev('bottom')};$('next').onclick=()=>{setZoom(1);flip?.flipNext('bottom')};$('last').onclick=()=>{setZoom(1);flip?.flip(nodes.length-1,'bottom')};
+$('fullscreen').onclick=async()=>{try{if(document.documentElement.requestFullscreen)await document.documentElement.requestFullscreen();else status('Schermo intero non supportato.',true)}catch(e){status('Schermo intero non disponibile in questa finestra.',true)}};
+$('exit-fullscreen').onclick=async()=>{if(document.fullscreenElement)try{await document.exitFullscreen()}catch(e){console.warn(e)}};
+function remount(){clearTimeout(resizing);resizing=setTimeout(()=>{if(pdf){const index=flip?.getCurrentPageIndex()??current;mountBook(index)}},220)}
+window.addEventListener('resize',remount);document.addEventListener('fullscreenchange',()=>{setZoom(1);remount();});
+document.addEventListener('keydown',e=>{if(['INPUT','TEXTAREA'].includes(document.activeElement?.tagName))return;if(e.key==='ArrowRight'){if(zoom===1)flip?.flipNext('bottom');else{panX-=70;applyZoom()}}if(e.key==='ArrowLeft'){if(zoom===1)flip?.flipPrev('bottom');else{panX+=70;applyZoom()}}if(e.key==='Escape'&&zoom>1)setZoom(1)});
+// Mouse: CTRL+rotellina (o rotellina sopra il libro) per lo zoom; trascina per spostare.
+stage.addEventListener('wheel',e=>{if(e.ctrlKey||e.target.closest('#book-mount')||zoom>1){e.preventDefault();setZoom(zoom*(e.deltaY<0?1.13:1/1.13))}},{passive:false});
+// Gesti touch: pizzica con due dita per zoom; con zoom attivo trascina con un dito.
+const pointers=new Map();let gestureDistance=0,gestureZoom=1,lastPoint=null;
+function distance(){const arr=[...pointers.values()];return Math.hypot(arr[0].x-arr[1].x,arr[0].y-arr[1].y)}
+stage.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse'&&e.button!==0)return;pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(pointers.size===2){gestureDistance=distance();gestureZoom=zoom;lastPoint=null;}else if(zoom>1){lastPoint={x:e.clientX,y:e.clientY};stage.classList.add('dragging')}if(zoom>1||pointers.size>1){try{stage.setPointerCapture(e.pointerId)}catch(_){}}});
+stage.addEventListener('pointermove',e=>{if(!pointers.has(e.pointerId))return;const old=pointers.get(e.pointerId);pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});if(pointers.size>=2){e.preventDefault();if(!gestureDistance){gestureDistance=distance();gestureZoom=zoom;}setZoom(gestureZoom*distance()/Math.max(1,gestureDistance));}else if(zoom>1){e.preventDefault();panX+=e.clientX-old.x;panY+=e.clientY-old.y;applyZoom();}},{passive:false});
+function endPointer(e){pointers.delete(e.pointerId);if(pointers.size<2)gestureDistance=0;if(!pointers.size){stage.classList.remove('dragging');lastPoint=null;}}
+stage.addEventListener('pointerup',endPointer);stage.addEventListener('pointercancel',endPointer);
+// Doppio tocco / doppio clic per ingrandire e ripristinare.
+let lastTap=0;stage.addEventListener('pointerup',e=>{if(e.pointerType!=='touch'||pointers.size)return;const now=Date.now();if(now-lastTap<310)setZoom(zoom>1?1:2);lastTap=now;});
+stage.addEventListener('dblclick',e=>{e.preventDefault();setZoom(zoom>1?1:2)});
+async function init(){if(!window.pdfjsLib||!window.St?.PageFlip){loading(false);status('Le librerie non sono disponibili. Serve una connessione Internet.',true);return;}
+try{pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+// PDF.js può richiedere intervalli del file al server, se il server lo supporta.
+pdf=await pdfjsLib.getDocument({url:new URL(PDF_FILE,location.href).href,rangeChunkSize:65536}).promise;
+loading(true,`${pdf.numPages} pagine: preparazione della copertina…`);
+const first=await pdf.getPage(1),viewport=first.getViewport({scale:1});pageRatio=viewport.height/viewport.width;
+mountBook(0);
+// Apri subito, senza aspettare la conversione di tutto il documento.
+await new Promise((resolve,reject)=>{const started=Date.now();const check=()=>cached.has(0)?resolve():Date.now()-started>20000?reject(new Error('La copertina non può essere preparata. Verifica il PDF.')):setTimeout(check,80);check()});
+loading(false);status('Sfoglia il libro. Usa due dita per ingrandire; sul computer usa + e −.');
+}catch(err){console.error(err);loading(false);status('Errore apertura PDF: '+(err?.message||err),true)}}
+init();
+</script>
+</body>
+</html>
