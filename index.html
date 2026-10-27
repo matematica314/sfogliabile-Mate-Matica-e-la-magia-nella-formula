@@ -66,7 +66,7 @@ document.title=$('book-title').textContent;
 const stage=$('stage'), mount=$('book-mount');
 let pdf=null,flip=null,nodes=[],current=0,pageRatio=1.414,resizing=null;
 let zoom=1,panX=0,panY=0;
-const MIN_ZOOM=1,MAX_ZOOM=4,MAX_CACHE=14;
+const MIN_ZOOM=1,MAX_ZOOM=4,MAX_CACHE=8;
 const cached=new Map(),active=new Set(),pending=new Set();
 let running=0;
 function status(msg,bad=false){$('status').textContent=msg;$('status').classList.toggle('error',bad)}
@@ -82,11 +82,13 @@ function pump(){if(!pdf)return;while(running<2&&pending.size){const order=needed
 const i=targets[0];pending.delete(i);if(cached.has(i)||active.has(i))continue;running++;active.add(i);
 renderPage(i).then(url=>{cached.set(i,url);const img=nodes[i]?.querySelector('img');if(img)img.src=url;trimCache();}).catch(err=>{console.warn('Pagina '+(i+1),err);}).finally(()=>{active.delete(i);running--;pump()});}}
 async function renderPage(i){const page=await pdf.getPage(i+1);const base=page.getViewport({scale:1});
- // Risoluzione equilibrata fra nitidezza e memoria; lo zoom ingrandisce le immagini già preparate.
- const targetWidth=Math.min(1600,Math.max(950,Math.ceil(base.width*1.65)));
+ // Rendering nitido: larghezza elevata, senza perdita JPEG. Solo le pagine vicine sono elaborate.
+ // Il limite evita picchi eccessivi di memoria sui dispositivi mobili.
+ const displayWidth=mount.offsetWidth/(stage.clientWidth<700?1:2);
+ const targetWidth=Math.min(2400,Math.max(1600,Math.ceil(displayWidth*2.6)));
  const viewport=page.getViewport({scale:targetWidth/base.width});const canvas=document.createElement('canvas');canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
  try{await page.render({canvasContext:canvas.getContext('2d',{alpha:false}),viewport}).promise;
- const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error('Conversione immagine non riuscita')),'image/jpeg',.86));return URL.createObjectURL(blob);
+ const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error('Conversione immagine non riuscita')),'image/png'));return URL.createObjectURL(blob);
  }finally{canvas.width=0;canvas.height=0;page.cleanup();}}
 function makeNodes(){nodes=Array.from({length:pdf.numPages},(_,i)=>{const div=document.createElement('div');div.className='page'+((i===0||i===pdf.numPages-1)?' hard':'');if(i===0||i===pdf.numPages-1)div.dataset.density='hard';const img=document.createElement('img');img.alt=`Pagina ${i+1}`;img.draggable=false;if(cached.has(i))img.src=cached.get(i);div.appendChild(img);return div;});}
 function mountBook(index=0){if(!window.St?.PageFlip)return;if(flip){try{flip.destroy()}catch(e){console.warn(e)}flip=null;}
@@ -129,7 +131,7 @@ const first=await pdf.getPage(1),viewport=first.getViewport({scale:1});pageRatio
 mountBook(0);
 // Apri subito, senza aspettare la conversione di tutto il documento.
 await new Promise((resolve,reject)=>{const started=Date.now();const check=()=>cached.has(0)?resolve():Date.now()-started>20000?reject(new Error('La copertina non può essere preparata. Verifica il PDF.')):setTimeout(check,80);check()});
-loading(false);status('Sfoglia il libro. Usa due dita per ingrandire; sul computer usa + e −.');
+loading(false);status('Sfoglia il libro. Pagine PNG nitide; usa due dita per ingrandire, oppure + e −.');
 }catch(err){console.error(err);loading(false);status('Errore apertura PDF: '+(err?.message||err),true)}}
 init();
 </script>
